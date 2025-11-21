@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Recipe Finder — Feedback Loop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .ingredient-tag { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+    .recipe-card { transition: transform .2s ease, box-shadow .2s ease; }
+    .recipe-card:hover { transform: translateY(-2px); }
+    dialog::backdrop { background: rgb(0 0 0 / .45); }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-pink-50 min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto p-4">
+    <!-- Header -->
+    <header class="text-center mb-8 pt-6">
+      <div class="flex items-center justify-center mb-2"><span class="text-6xl">🧑🏻‍🍳</span></div>
+      <h1 class="text-4xl font-bold text-gray-800">Smart Recipe Finder</h1>
+      <p class="text-gray-600">Ingredient-driven recipes with an interactive feedback loop</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- LEFT: Inputs -->
+      <section class="lg:col-span-1 space-y-4">
+        <div class="bg-white rounded-2xl shadow-lg p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            Add Ingredients
+          </h2>
+          <div class="flex gap-2 mb-4">
+            <input id="ingredientInput" type="text" placeholder="e.g., chicken, broccoli"
+                   class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
+                   onkeypress="if(event.key==='Enter') addIngredient()" />
+            <button onclick="addIngredient()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-pink-400 transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+          </div>
+          <div id="ingredientsList" class="flex flex-wrap gap-2 mb-4"></div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Cuisine Style (Optional)</label>
+              <select id="cuisineStyle" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
+                <option value="">Any</option>
+                <option>Chinese</option>
+                <option>Western</option>
+                <option>Japanese</option>
+                <option>Korean</option>
+                <option>Southeast Asian</option>
+                <option>Italian</option>
+                <option>Mexican</option>
+                <option>Indian</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Dietary Preference (Optional)</label>
+              <select id="dietaryPreference" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
+                <option value="">Any</option>
+                <option>Healthy/Low-calorie</option>
+                <option>Vegetarian</option>
+                <option>High-protein</option>
+                <option>Quick & Easy</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="searchBtn" onclick="searchRecipes()" class="w-full mt-4 bg-blue-500 text-white py-3 rounded-lg hover:bg-pink-400 transition-colors font-medium flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            Search Recipes
+          </button>
+        </div>
+
+        <!-- Feedback Controls -->
+        <div class="bg-white rounded-2xl shadow-lg p-6">
+          <h3 class="text-lg font-semibold mb-2">Your Feedback Controls</h3>
+          <div class="space-y-3 text-sm">
+            <div>
+              <label class="block font-medium">Ban / avoid ingredient</label>
+              <div class="flex gap-2 mt-1">
+                <input id="banInput" type="text" placeholder="e.g., cilantro" class="flex-1 px-3 py-2 border rounded-lg" onkeypress="if(event.key==='Enter') banIngredient()" />
+                <button class="px-3 py-2 rounded-lg border border-pink-400 text-pink-500 bg-white hover:bg-pink-50 flex items-center justify-center" onclick="banIngredient()" title="Ban ingredient"><svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="9" stroke-width="2"></circle><line x1="15" y1="9" x2="9" y2="15" stroke-width="2" stroke-linecap="round"></line></svg></button>
+              </div>
+              <div id="bannedTags" class="flex flex-wrap gap-2 mt-2"></div>
+            </div>
+            <div>
+              <label class="block font-medium">Replace ingredient</label>
+              <div class="grid grid-cols-12 gap-2 mt-1">
+                <input id="replaceFrom" placeholder="e.g., butter" class="px-3 py-2 border rounded-lg col-span-5" />
+                <input id="replaceTo" placeholder="e.g., olive oil" class="px-3 py-2 border rounded-lg col-span-5" />
+                <button class="col-span-2 flex items-center justify-center rounded-lg border border-pink-400 text-pink-500 bg-white hover:bg-pink-50" onclick="replaceIngredientGlobal()" title="Add replacement">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8m0 0l-3-3m3 3l-3 3M16 17H8m0 0l3-3m-3 3l3 3" />
+                  </svg>
+                </button>
+              </div>
+              <div id="replacementTags" class="flex flex-wrap gap-2 mt-2"></div>
+            </div>
+            
+            <button
+  id="refineBtn"
+  onclick="refineWithFeedback()"
+  class="w-full mt-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-pink-400 transition-colors font-medium flex items-center justify-center gap-2"
+>
+  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+  </svg>
+  Refine Recommendations
+</button>
+          </div>
+        </div>
+
+        <!-- Feedback Log -->
+        <div class="bg-white rounded-2xl shadow-lg p-6">
+          <h3 class="text-lg font-semibold mb-2">Feedback Log</h3>
+          <ul id="feedbackLog" class="text-sm text-gray-700 space-y-1 max-h-56 overflow-auto"></ul>
+        </div>
+      </section>
+
+      <!-- RIGHT: Results -->
+      <section class="lg:col-span-2">
+        <div id="emptyState" class="bg-white rounded-2xl shadow-lg p-12 text-center">
+          <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
+          <p class="text-gray-500 text-lg">Add ingredients and search for AI-powered recipe suggestions.</p>
+        </div>
+
+        <div id="recipesList" class="hidden space-y-4"></div>
+        <div id="recipeDetail" class="hidden bg-white rounded-2xl shadow-lg p-8"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Replace Modal -->
+  <dialog id="replaceModal" class="rounded-xl p-0 w-full max-w-md">
+    <form method="dialog" class="bg-white rounded-xl shadow-xl">
+      <div class="p-6">
+        <h4 class="text-lg font-semibold mb-1">Replace Ingredient</h4>
+        <p class="text-sm text-gray-600 mb-4">Suggest an alternative for <span id="replaceTarget" class="font-semibold"></span>.</p>
+        <input id="replaceValue" class="w-full px-3 py-2 border rounded-lg" placeholder="Type your alternative..." />
+      </div>
+      <div class="px-6 py-3 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+        <button class="px-3 py-2 rounded-lg" onclick="closeReplaceModal()">Cancel</button>
+        <button class="px-3 py-2 rounded-lg bg-gray-900 text-white" onclick="confirmReplaceModal(event)">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    // ==============================
+    // Gemini API Key (client-side demo only)
+    // ==============================
+    const GEMINI_API_KEY = 'AIzaSyAQre3cy375RPakHA9SDVHuAxmO9NBqz4o';
+
+    // ==============================
+    // App State
+    // ==============================
+    let ingredients = [];
+    let recipes = [];
+    let likes = new Set();
+    let dislikes = new Set();
+    let banned = new Set();
+    let replacements = {}; // { from: to }
+    let correctionNotes = {}; // { recipeName: [notes] }
+
+    // Helpers
+    const el = (id) => document.getElementById(id);
+
+    function addToLog(msg) {
+      const li = document.createElement('li');
+      li.textContent = '• ' + msg;
+      el('feedbackLog').prepend(li);
+    }
+
+    // ==============================
+    // Ingredients UI
+    // ==============================
+    function addIngredient() {
+      const input = el('ingredientInput');
+      const value = input.value.trim();
+      if (value && !ingredients.includes(value)) {
+        ingredients.push(value);
+        input.value = '';
+        renderIngredients();
+      }
+    }
+
+    function removeIngredient(item) {
+      ingredients = ingredients.filter((x) => x !== item);
+      renderIngredients();
+    }
+
+    function renderIngredients() {
+      el('ingredientsList').innerHTML = ingredients
+        .map((ing) => `
+          <div class="ingredient-tag bg-blue-100 text-blue-700 px-3 py-1 rounded-full flex items-center gap-2">
+            ${ing}
+            <button class="hover:text-blue-900" onclick="removeIngredient('${ing.replace(/'/g, "\\'")}')">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+        `)
+        .join('');
+    }
+
+    // ==============================
+    // Feedback Controls (Ban/Replace)
+    // ==============================
+    function banIngredient() {
+      const val = el('banInput').value.trim();
+      if (!val) return;
+      banned.add(val);
+      addToLog(`Avoid ingredient: ${val}`);
+      el('banInput').value = '';
+      renderBanned();
+    }
+
+    function unbanIngredient(val) {
+      banned.delete(val);
+      renderBanned();
+      addToLog(`Removed ban: ${val}`);
+    }
+
+    function renderBanned() {
+      el('bannedTags').innerHTML = Array.from(banned)
+        .map((v) => `
+          <span class="text-xs bg-rose-100 text-rose-700 px-2 py-1 rounded-full inline-flex items-center gap-1">${v}
+            <button class="hover:text-rose-900" onclick="unbanIngredient('${v.replace(/'/g, "\\'")}')">✕</button>
+          </span>`)
+        .join('');
+    }
+
+    function replaceIngredientGlobal() {
+      const from = el('replaceFrom').value.trim();
+      const to = el('replaceTo').value.trim();
+      if (!from || !to) return;
+      replacements[from] = to;
+      el('replaceFrom').value = '';
+      el('replaceTo').value = '';
+      addToLog(`Replace ${from} → ${to}`);
+      renderReplacements();
+    }
+
+    function removeReplacement(from) {
+      delete replacements[from];
+      renderReplacements();
+      addToLog(`Removed replacement for ${from}`);
+    }
+
+    function renderReplacements() {
+      const entries = Object.entries(replacements);
+      el('replacementTags').innerHTML = entries
+        .map(([f, t]) => `
+          <span class="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full inline-flex items-center gap-1">${f}→${t}
+            <button class="hover:text-amber-900" onclick="removeReplacement('${f.replace(/'/g, "\\'")}')">✕</button>
+          </span>`)
+        .join('');
+    }
+
+    // ==============================
+    // API: Search & Refine
+    // ==============================
+    function basePrompt() {
+      const cuisineStyle = el('cuisineStyle').value;
+      const dietaryPreference = el('dietaryPreference').value;
+
+      const likedNames = Array.from(likes);
+      const dislikedNames = Array.from(dislikes);
+      const bannedList = Array.from(banned);
+      const replList = Object.entries(replacements).map(([f, t]) => `${f}→${t}`);
+
+      return `The human will actively control outputs. You are a strict JSON generator.
+Use the given ingredients and constraints to propose 3–5 recipe options. If a banned ingredient is essential, propose an alternative that respects replacements.
+
+INPUTS
+- Ingredients I have: ${ingredients.join(', ') || '(none)'}
+- Cuisine preference: ${cuisineStyle || 'Any'}
+- Diet preference: ${dietaryPreference || 'Any'}
+- Banned ingredients: ${bannedList.join(', ') || '(none)'}
+- Replacements (A→B): ${replList.join(', ') || '(none)'}
+- Liked recipe names: ${likedNames.join(', ') || '(none)'}
+- Disliked recipe names: ${dislikedNames.join(', ') || '(none)'}
+
+RULES
+1) Respect bans.
+2) Apply replacements where reasonable (e.g., butter→olive oil).
+3) Prefer styles similar to liked items; avoid disliked items.
+4) Output JSON ONLY, no prose, exactly in this schema:
+{
+  "recipes": [
+    {
+      "name": "Dish name",
+      "reason": "1–2 lines of why it fits my inputs",
+      "matchedIngredients": ["..."],
+      "missingIngredients": ["..."],
+      "cookingTime": "30 minutes",
+      "servings": "2 servings",
+      "difficulty": "Easy|Medium|Hard",
+      "steps": ["Step 1 ...", "Step 2 ..."],
+      "tips": "Short cooking tip",
+      "appliedReplacements": ["butter→olive oil"]
+    }
+  ]
+}`;
+    }
+
+    async function searchRecipes() {
+      if (ingredients.length === 0) {
+        alert('Please add at least one ingredient.');
+        return;
+      }
+      await runModel(basePrompt(), { mode: 'search' });
+    }
+
+    async function refineWithFeedback() {
+      if (ingredients.length === 0) {
+        alert('Please add ingredients first.');
+        return;
+      }
+      const extra = buildCorrectionsPrompt();
+      await runModel(basePrompt() + extra, { mode: 'refine' });
+    }
+
+    function buildCorrectionsPrompt() {
+      const pairs = Object.entries(correctionNotes);
+      if (pairs.length === 0) return '';
+      const lines = pairs.flatMap(([name, notes]) => notes.map(n => `- ${name}: ${n}`));
+      return `\nADDITIONAL CORRECTIONS FROM USER\n${lines.join('\n')}\nPlease adjust future suggestions accordingly.`;
+    }
+
+    async function runModel(prompt, { mode }) {
+      const btn = el(mode === 'search' ? 'searchBtn' : 'refineBtn');
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<svg class='w-5 h-5 animate-spin' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'></path></svg>${mode==='search'?' Searching...':' Refining...'}`;
+
+      try {
+        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(()=>({}));
+          throw new Error(err.error?.message || 'API request failed.');
+        }
+
+        const data = await res.json();
+        const content = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        // extract JSON (handle code fences)
+        let jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+          jsonMatch = clean.match(/\{[\s\S]*\}/);
+        }
+        if (!jsonMatch) throw new Error('Could not parse JSON from model response.');
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        recipes = parsed.recipes || [];
+        if (!Array.isArray(recipes) || recipes.length === 0) throw new Error('No recipes returned.');
+
+        renderRecipesList();
+        addToLog(mode === 'search' ? 'Generated initial suggestions.' : 'Refined suggestions with feedback.');
+      } catch (e) {
+        alert('Failed: ' + e.message);
+        console.error(e);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    }
+
+    // ==============================
+    // Recipes List & Detail
+    // ==============================
+    function renderRecipesList() {
+      el('emptyState').classList.add('hidden');
+      el('recipeDetail').classList.add('hidden');
+      const box = el('recipesList');
+      box.classList.remove('hidden');
+
+      // simple rerank: prioritize those not containing banned items
+      const bannedList = Array.from(banned);
+      const ranked = [...recipes].sort((a,b)=>{
+        const aBad = (a.missingIngredients||[]).concat(a.matchedIngredients||[]).some(x=>bannedList.includes(String(x).toLowerCase()))
+                  || (a.appliedReplacements||[]).some(pair=>bannedList.includes(String(pair.split('→')[0]||'').toLowerCase()));
+        const bBad = (b.missingIngredients||[]).concat(b.matchedIngredients||[]).some(x=>bannedList.includes(String(x).toLowerCase()))
+                  || (b.appliedReplacements||[]).some(pair=>bannedList.includes(String(pair.split('→')[0]||'').toLowerCase()));
+        return (aBad===bBad)?0:(aBad?1:-1);
+      });
+
+      box.innerHTML = `
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Recommended Recipes</h2>
+        ${ranked.map((r,i)=> recipeCard(r,i)).join('')}
+      `;
+    }
+
+    function recipeCard(recipe, index) {
+      const liked = likes.has(recipe.name);
+      const disliked = dislikes.has(recipe.name);
+      return `
+      <div class="recipe-card bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h3 class="text-xl font-semibold text-gray-800 mb-1">${recipe.name}</h3>
+            ${recipe.reason ? `<p class="text-sm text-gray-600 mb-2">${recipe.reason}</p>` : ''}
+            <div class="flex flex-wrap gap-4 text-sm text-gray-600 mb-2">
+              <span class="flex items-center gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>${recipe.cookingTime||'-'}</span>
+              <span class="flex items-center gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>${recipe.servings||'-'}</span>
+              <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded">${recipe.difficulty||'Easy'}</span>
+            </div>
+            <div class="mb-2">
+              <p class="text-sm font-medium text-gray-700 mb-1">Available ingredients:</p>
+              <div class="flex flex-wrap gap-2">${(recipe.matchedIngredients||[]).map(ing=>`<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">✓ ${ing}</span>`).join('')}</div>
+            </div>
+            ${(recipe.missingIngredients && recipe.missingIngredients.length)?`
+            <div>
+              <p class="text-sm font-medium text-gray-700 mb-1">Need to add:</p>
+              <div class="flex flex-wrap gap-2">
+                ${recipe.missingIngredients.map(ing=>`
+                  <span class="text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded inline-flex items-center gap-1">
+                    + ${ing}
+                    <button class="text-pink-800 hover:text-pink-900" title="Replace this" onclick="openReplaceModal('${recipe.name.replace(/'/g,"\\'")}', '${String(ing).replace(/'/g,"\\'")}')">↺</button>
+                  </span>`).join('')}
+              </div>
+            </div>`:''}
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <div class="flex gap-2">
+              <button class="px-3 py-1 rounded-full border ${liked?'bg-blue-500 text-white':'hover:bg-blue-50'}" onclick="toggleLike('${recipe.name.replace(/'/g,"\\'")}')">👍</button>
+              <button class="px-3 py-1 rounded-full border ${disliked?'bg-pink-500 text-white':'hover:bg-pink-50'}" onclick="toggleDislike('${recipe.name.replace(/'/g,"\\'")}')">👎</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 flex justify-start">
+          <button class="text-blue-500 text-small hover:text-blue-600" onclick="showRecipeDetail('${recipe.name.replace(/'/g,"\\'")}', ${index})">View steps →</button>
+        </div>
+      </div>`;
+    }
+
+
+    function toggleLike(name){
+      if (likes.has(name)) likes.delete(name); else { likes.add(name); dislikes.delete(name); }
+      addToLog(`${likes.has(name)?'Liked':'Removed like'}: ${name}`);
+      renderRecipesList();
+    }
+    function toggleDislike(name){
+      if (dislikes.has(name)) dislikes.delete(name); else { dislikes.add(name); likes.delete(name); }
+      addToLog(`${dislikes.has(name)?'Disliked':'Removed dislike'}: ${name}`);
+      renderRecipesList();
+    }
+
+    function showRecipeDetail(name, index){
+      const recipe = recipes[index];
+      el('recipesList').classList.add('hidden');
+      const c = el('recipeDetail');
+      c.classList.remove('hidden');
+
+      const notes = (correctionNotes[name]||[]).slice(0,5);
+      c.innerHTML = `
+        <button onclick="backToList()" class="text-blue-500 hover:text-blue-600 mb-4 flex items-center gap-1">← Back to list</button>
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="text-3xl font-bold text-gray-800">${recipe.name}</h2>
+          <div class="flex gap-2">
+            <button class="px-3 py-1 rounded-full border ${likes.has(name)?'bg-blue-500 text-white':'hover:bg-blue-50'}" onclick="toggleLike('${name.replace(/'/g,"\\'")}')">👍</button>
+            <button class="px-3 py-1 rounded-full border ${dislikes.has(name)?'bg-pink-500 text-white':'hover:bg-pink-50'}" onclick="toggleDislike('${name.replace(/'/g,"\\'")}')">👎</button>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-4 text-gray-600 mb-6 mt-2">
+          <span class="flex items-center gap-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>${recipe.cookingTime||'-'}</span>
+          <span class="flex items-center gap-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>${recipe.servings||'-'}</span>
+          <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full">${recipe.difficulty||'Easy'}</span>
+        </div>
+        <div class="mb-6">
+          <h3 class="text-xl font-semibold mb-3">Required Ingredients</h3>
+          <div class="grid grid-cols-2 gap-2">
+            ${(recipe.matchedIngredients||[]).map(ing=>`<div class='flex items-center gap-2'><span class='text-green-500'>✓</span><span>${ing}</span></div>`).join('')}
+            ${(recipe.missingIngredients||[]).map(ing=>`<div class='flex items-center gap-2'><span class='text-pink-500'>+</span><span class='text-gray-600'>${ing}</span><button class='text-xs text-pink-700 underline' onclick="openReplaceModal('${name.replace(/'/g,"\\'")}', '${String(ing).replace(/'/g,"\\'")}')">replace</button></div>`).join('')}
+          </div>
+        </div>
+        <div class="mb-6">
+          <h3 class="text-xl font-semibold mb-3">Cooking Steps</h3>
+          <ol class="space-y-3">
+            ${(recipe.steps||[]).map((s,i)=>`<li class='flex gap-3'><span class='flex-shrink-0 w-6 h-6 bg-pink-400 text-white rounded-full flex items-center justify-center text-sm'>${i+1}</span><span class='text-gray-700'>${s}</span></li>`).join('')}
+          </ol>
+        </div>
+        ${recipe.tips?`<div class='bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded'><h3 class='text-lg font-semibold mb-2 text-yellow-800'>Cooking Tips</h3><p class='text-gray-700'>${recipe.tips}</p></div>`:''}
+        ${(recipe.appliedReplacements && recipe.appliedReplacements.length)?`<p class='mt-4 text-sm text-gray-500'>Applied replacements: ${recipe.appliedReplacements.join(', ')}</p>`:''}
+
+        <div class="mt-8 bg-gray-50 border rounded-xl p-4">
+          <h4 class="font-semibold mb-2">Suggest a correction for this recipe</h4>
+          <div class="flex gap-2">
+            <input id="correctionInput" class="flex-1 px-3 py-2 border rounded-lg" placeholder="e.g., Step 2 should sauté for 5 minutes, not 15." />
+            <button class="px-3 py-2 rounded-lg bg-gray-900 text-white" onclick="submitCorrection('${name.replace(/'/g,"\\'")}')">Add</button>
+          </div>
+          ${notes.length?`<ul class='mt-3 text-sm text-gray-700 list-disc pl-5'>${notes.map(n=>`<li>${n}</li>`).join('')}</ul>`:''}
+        </div>
+      `;
+    }
+
+    function backToList(){
+      el('recipeDetail').classList.add('hidden');
+      el('recipesList').classList.remove('hidden');
+    }
+
+    function submitCorrection(name){
+      const input = el('correctionInput');
+      const val = input.value.trim();
+      if (!val) return;
+      if (!correctionNotes[name]) correctionNotes[name] = [];
+      correctionNotes[name].unshift(val);
+      input.value = '';
+      addToLog(`Correction for ${name}: ${val}`);
+      // re-render detail to show latest notes
+      const idx = recipes.findIndex(r=>r.name===name);
+      if (idx>=0) showRecipeDetail(name, idx);
+    }
+
+    // ==============================
+    // Replace modal flow (per-ingredient quick replace)
+    // ==============================
+    let replaceModalTargetRecipe = null;
+    let replaceModalTargetIngredient = null;
+
+    function openReplaceModal(recipeName, ing){
+      replaceModalTargetRecipe = recipeName;
+      replaceModalTargetIngredient = ing;
+      el('replaceTarget').textContent = ing;
+      el('replaceValue').value = '';
+      el('replaceModal').showModal();
+    }
+    function closeReplaceModal(){ el('replaceModal').close(); }
+    function confirmReplaceModal(e){
+      e?.preventDefault();
+      const newVal = el('replaceValue').value.trim();
+      if (!newVal) { closeReplaceModal(); return; }
+      // add to global replacements so the model will honor it next refine
+      replacements[replaceModalTargetIngredient] = newVal;
+      addToLog(`Replace ${replaceModalTargetIngredient} → ${newVal} (from ${replaceModalTargetRecipe})`);
+      renderReplacements();
+      closeReplaceModal();
+    }
+  </script>
+</body>
+</html>
