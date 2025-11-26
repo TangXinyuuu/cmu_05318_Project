@@ -115,7 +115,17 @@
 
         <!-- Feedback Log -->
         <div class="bg-white rounded-2xl shadow-lg p-6">
-          <h3 class="text-lg font-semibold mb-2">Feedback Log</h3>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-semibold">Feedback Log</h3>
+            <div class="flex gap-2">
+              <button onclick="showSavedData()" class="text-xs text-blue-500 hover:text-blue-700 underline" title="View saved preferences">
+                View Saved
+              </button>
+              <button onclick="clearAllPreferences()" class="text-xs text-red-500 hover:text-red-700 underline" title="Clear all saved preferences">
+                Clear All
+              </button>
+            </div>
+          </div>
           <ul id="feedbackLog" class="text-sm text-gray-700 space-y-1 max-h-56 overflow-auto"></ul>
         </div>
       </section>
@@ -152,7 +162,7 @@
     // ==============================
     // Gemini API Key (client-side demo only)
     // ==============================
-    const GEMINI_API_KEY = 'AIzaSyAQre3cy375RPakHA9SDVHuAxmO9NBqz4o';
+    const GEMINI_API_KEY = 'AIzaSyC1okii4DAvBSNq6ua4v3Rg3SQxLdr5fas';
 
     // ==============================
     // App State
@@ -164,6 +174,81 @@
     let banned = new Set();
     let replacements = {}; // { from: to }
     let correctionNotes = {}; // { recipeName: [notes] }
+
+    // ==============================
+    // LocalStorage persistence
+    // ==============================
+    function savePreferences() {
+      localStorage.setItem('recipeFinder_likes', JSON.stringify([...likes]));
+      localStorage.setItem('recipeFinder_dislikes', JSON.stringify([...dislikes]));
+      localStorage.setItem('recipeFinder_banned', JSON.stringify([...banned]));
+      localStorage.setItem('recipeFinder_replacements', JSON.stringify(replacements));
+    }
+
+    function loadPreferences() {
+      try {
+        const savedLikes = localStorage.getItem('recipeFinder_likes');
+        const savedDislikes = localStorage.getItem('recipeFinder_dislikes');
+        const savedBanned = localStorage.getItem('recipeFinder_banned');
+        const savedReplacements = localStorage.getItem('recipeFinder_replacements');
+        
+        if (savedLikes) likes = new Set(JSON.parse(savedLikes));
+        if (savedDislikes) dislikes = new Set(JSON.parse(savedDislikes));
+        if (savedBanned) banned = new Set(JSON.parse(savedBanned));
+        if (savedReplacements) replacements = JSON.parse(savedReplacements);
+        
+        renderBanned();
+        renderReplacements();
+      } catch (e) {
+        console.error('Failed to load preferences:', e);
+      }
+    }
+
+    // Load preferences on page load
+    window.addEventListener('DOMContentLoaded', loadPreferences);
+
+    function clearAllPreferences() {
+      if (!confirm('Are you sure you want to clear all saved preferences? This will delete:\n- Liked/disliked recipes\n- Banned ingredients\n- Replacement rules\n\nThis action cannot be undone.')) {
+        return;
+      }
+      
+      // Clear all data
+      likes.clear();
+      dislikes.clear();
+      banned.clear();
+      replacements = {};
+      
+      // Clear localStorage
+      localStorage.removeItem('recipeFinder_likes');
+      localStorage.removeItem('recipeFinder_dislikes');
+      localStorage.removeItem('recipeFinder_banned');
+      localStorage.removeItem('recipeFinder_replacements');
+      
+      // Update UI
+      renderBanned();
+      renderReplacements();
+      renderRecipesList();
+      
+      addToLog('All preferences cleared');
+      alert('All saved data has been cleared successfully!');
+    }
+
+    function showSavedData() {
+      const likedList = likes.size > 0 ? [...likes].join(', ') : 'None';
+      const dislikedList = dislikes.size > 0 ? [...dislikes].join(', ') : 'None';
+      const bannedList = banned.size > 0 ? [...banned].join(', ') : 'None';
+      const replacementsList = Object.keys(replacements).length > 0 
+        ? Object.entries(replacements).map(([f, t]) => `${f}→${t}`).join(', ') 
+        : 'None';
+      
+      const message = `📊 Your Saved Preferences:\n\n` +
+        `👍 Liked Recipes (${likes.size}):\n${likedList}\n\n` +
+        `👎 Disliked Recipes (${dislikes.size}):\n${dislikedList}\n\n` +
+        `🚫 Banned Ingredients (${banned.size}):\n${bannedList}\n\n` +
+        `🔄 Replacement Rules (${Object.keys(replacements).length}):\n${replacementsList}`;
+      
+      alert(message);
+    }
 
     // Helpers
     const el = (id) => document.getElementById(id);
@@ -215,11 +300,13 @@
       addToLog(`Avoid ingredient: ${val}`);
       el('banInput').value = '';
       renderBanned();
+      savePreferences();
     }
 
     function unbanIngredient(val) {
       banned.delete(val);
       renderBanned();
+      savePreferences();
       addToLog(`Removed ban: ${val}`);
     }
 
@@ -241,11 +328,13 @@
       el('replaceTo').value = '';
       addToLog(`Replace ${from} → ${to}`);
       renderReplacements();
+      savePreferences();
     }
 
     function removeReplacement(from) {
       delete replacements[from];
       renderReplacements();
+      savePreferences();
       addToLog(`Removed replacement for ${from}`);
     }
 
@@ -324,10 +413,30 @@ RULES
     }
 
     function buildCorrectionsPrompt() {
+      let feedback = '';
+      
+      // Add liked recipes info
+      if (likes.size > 0) {
+        feedback += `\nUSER LIKES these recipes: ${[...likes].join(', ')}\nPlease suggest more recipes similar to these in style, flavors, and ingredients.`;
+      }
+      
+      // Add disliked recipes info
+      if (dislikes.size > 0) {
+        feedback += `\nUSER DISLIKES these recipes: ${[...dislikes].join(', ')}\nPlease avoid suggesting recipes with similar characteristics.`;
+      }
+      
+      // Add correction notes
       const pairs = Object.entries(correctionNotes);
-      if (pairs.length === 0) return '';
-      const lines = pairs.flatMap(([name, notes]) => notes.map(n => `- ${name}: ${n}`));
-      return `\nADDITIONAL CORRECTIONS FROM USER\n${lines.join('\n')}\nPlease adjust future suggestions accordingly.`;
+      if (pairs.length > 0) {
+        const lines = pairs.flatMap(([name, notes]) => notes.map(n => `- ${name}: ${n}`));
+        feedback += `\nADDITIONAL CORRECTIONS/NOTES FROM USER:\n${lines.join('\n')}`;
+      }
+      
+      if (feedback) {
+        feedback += `\nPlease adjust future suggestions accordingly.`;
+      }
+      
+      return feedback;
     }
 
     async function runModel(prompt, { mode }) {
@@ -337,7 +446,7 @@ RULES
       btn.innerHTML = `<svg class='w-5 h-5 animate-spin' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'></path></svg>${mode==='search'?' Searching...':' Refining...'}`;
 
       try {
-        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent', {
+        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
           body: JSON.stringify({
@@ -450,11 +559,13 @@ RULES
     function toggleLike(name){
       if (likes.has(name)) likes.delete(name); else { likes.add(name); dislikes.delete(name); }
       addToLog(`${likes.has(name)?'Liked':'Removed like'}: ${name}`);
+      savePreferences();
       renderRecipesList();
     }
     function toggleDislike(name){
       if (dislikes.has(name)) dislikes.delete(name); else { dislikes.add(name); likes.delete(name); }
       addToLog(`${dislikes.has(name)?'Disliked':'Removed dislike'}: ${name}`);
+      savePreferences();
       renderRecipesList();
     }
 
@@ -496,7 +607,7 @@ RULES
         ${(recipe.appliedReplacements && recipe.appliedReplacements.length)?`<p class='mt-4 text-sm text-gray-500'>Applied replacements: ${recipe.appliedReplacements.join(', ')}</p>`:''}
 
         <div class="mt-8 bg-gray-50 border rounded-xl p-4">
-          <h4 class="font-semibold mb-2">Suggest a correction for this recipe</h4>
+          <h4 class="font-semibold mb-2">Your notes for this recipe</h4>
           <div class="flex gap-2">
             <input id="correctionInput" class="flex-1 px-3 py-2 border rounded-lg" placeholder="e.g., Step 2 should sauté for 5 minutes, not 15." />
             <button class="px-3 py-2 rounded-lg bg-gray-900 text-white" onclick="submitCorrection('${name.replace(/'/g,"\\'")}')">Add</button>
@@ -518,7 +629,7 @@ RULES
       if (!correctionNotes[name]) correctionNotes[name] = [];
       correctionNotes[name].unshift(val);
       input.value = '';
-      addToLog(`Correction for ${name}: ${val}`);
+      addToLog(`Note for ${name}: ${val}`);
       // re-render detail to show latest notes
       const idx = recipes.findIndex(r=>r.name===name);
       if (idx>=0) showRecipeDetail(name, idx);
@@ -546,6 +657,7 @@ RULES
       replacements[replaceModalTargetIngredient] = newVal;
       addToLog(`Replace ${replaceModalTargetIngredient} → ${newVal} (from ${replaceModalTargetRecipe})`);
       renderReplacements();
+      savePreferences();
       closeReplaceModal();
     }
   </script>
