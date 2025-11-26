@@ -55,15 +55,30 @@
                 <option>Indian</option>
               </select>
             </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Prep Time (Optional)</label>
+              <select id="prepTime" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
+                <option value="">Any</option>
+                <option value="less than 15">Under 15 minutes</option>
+                <option value="15-30">15-30 minutes</option>
+                <option value="30-60">30-60 minutes</option>
+                <option value="more than 60">Over 60 minutes</option>
+              </select>
+            </div>
+            
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Dietary Preference (Optional)</label>
-              <select id="dietaryPreference" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
+              <select id="dietaryPreference" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" onchange="handleDietaryChange()">
                 <option value="">Any</option>
                 <option>Healthy/Low-calorie</option>
                 <option>Vegetarian</option>
                 <option>High-protein</option>
                 <option>Quick & Easy</option>
+                <option value="custom">Custom/Other...</option>
               </select>
+              <input id="customDietaryInput" type="text" placeholder="Enter your dietary preference..."
+                     class="hidden w-full px-4 py-2 mt-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none" />
             </div>
           </div>
 
@@ -100,16 +115,16 @@
             </div>
             
             <button
-  id="refineBtn"
-  onclick="refineWithFeedback()"
-  class="w-full mt-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-pink-400 transition-colors font-medium flex items-center justify-center gap-2"
->
-  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-  </svg>
-  Refine Recommendations
-</button>
+              id="refineBtn"
+              onclick="refineWithFeedback()"
+              class="w-full mt-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-pink-400 transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+              Refine Recommendations
+            </button>
           </div>
         </div>
 
@@ -174,6 +189,32 @@
     let banned = new Set();
     let replacements = {}; // { from: to }
     let correctionNotes = {}; // { recipeName: [notes] }
+
+    // ==============================
+    // Handle custom dietary preference
+    // ==============================
+    function handleDietaryChange() {
+      const select = el('dietaryPreference');
+      const customInput = el('customDietaryInput');
+      
+      if (select.value === 'custom') {
+        customInput.classList.remove('hidden');
+        customInput.focus();
+      } else {
+        customInput.classList.add('hidden');
+        customInput.value = '';
+      }
+    }
+
+    function getDietaryPreference() {
+      const select = el('dietaryPreference');
+      const customInput = el('customDietaryInput');
+      
+      if (select.value === 'custom') {
+        return customInput.value.trim() || 'Any';
+      }
+      return select.value || 'Any';
+    }
 
     // ==============================
     // LocalStorage persistence
@@ -353,20 +394,27 @@
     // ==============================
     function basePrompt() {
       const cuisineStyle = el('cuisineStyle').value;
-      const dietaryPreference = el('dietaryPreference').value;
+      const dietaryPreference = getDietaryPreference();
+      const prepTime = el('prepTime').value;
 
       const likedNames = Array.from(likes);
       const dislikedNames = Array.from(dislikes);
       const bannedList = Array.from(banned);
       const replList = Object.entries(replacements).map(([f, t]) => `${f}→${t}`);
 
-      return `The human will actively control outputs. You are a strict JSON generator.
-Use the given ingredients and constraints to propose 3–5 recipe options. If a banned ingredient is essential, propose an alternative that respects replacements.
+      let prompt = `The human will actively control outputs. You are a strict JSON generator.
+Use the given ingredients and constraints to propose 2–5 recipe options. If a banned ingredient is essential, propose an alternative that respects replacements.
 
 INPUTS
 - Ingredients I have: ${ingredients.join(', ') || '(none)'}
 - Cuisine preference: ${cuisineStyle || 'Any'}
-- Diet preference: ${dietaryPreference || 'Any'}
+- Diet preference: ${dietaryPreference}`;
+
+      if (prepTime) {
+        prompt += `\n- Prep time constraint: ${prepTime} minutes`;
+      }
+
+      prompt += `
 - Banned ingredients: ${bannedList.join(', ') || '(none)'}
 - Replacements (A→B): ${replList.join(', ') || '(none)'}
 - Liked recipe names: ${likedNames.join(', ') || '(none)'}
@@ -374,9 +422,17 @@ INPUTS
 
 RULES
 1) Respect bans.
-2) Apply replacements where reasonable (e.g., butter→olive oil).
-3) Prefer styles similar to liked items; avoid disliked items.
-4) Output JSON ONLY, no prose, exactly in this schema:
+2) Apply replacements where reasonable (e.g., butter→olive oil).`;
+
+      if (prepTime) {
+        prompt += `\n3) All recipes must fit within the prep time constraint: ${prepTime} minutes.`;
+      } else {
+        prompt += `\n3) No specific time constraint.`;
+      }
+
+      prompt += `
+4) Prefer styles similar to liked items; avoid disliked items.
+5) Output JSON ONLY, no prose, exactly in this schema:
 {
   "recipes": [
     {
@@ -393,6 +449,8 @@ RULES
     }
   ]
 }`;
+
+      return prompt;
     }
 
     async function searchRecipes() {
