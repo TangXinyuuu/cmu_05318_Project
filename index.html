@@ -88,6 +88,24 @@
           </button>
         </div>
 
+        <!-- Saved Recipes Section -->
+        <div class="bg-white rounded-2xl shadow-lg p-6">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold flex items-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+              </svg>
+              Saved Recipes (<span id="savedCount">0</span>)
+            </h3>
+            <button onclick="toggleSavedRecipesView()" id="viewSavedBtn" class="text-sm text-blue-500 hover:text-blue-700 underline">
+              View All
+            </button>
+          </div>
+          <div id="savedRecipesPreview" class="space-y-2 max-h-48 overflow-auto">
+            <p class="text-sm text-gray-500 italic">No saved recipes yet</p>
+          </div>
+        </div>
+
         <!-- Feedback Controls -->
         <div class="bg-white rounded-2xl shadow-lg p-6">
           <h3 class="text-lg font-semibold mb-2">Your Feedback Controls</h3>
@@ -154,6 +172,7 @@
 
         <div id="recipesList" class="hidden space-y-4"></div>
         <div id="recipeDetail" class="hidden bg-white rounded-2xl shadow-lg p-8"></div>
+        <div id="savedRecipesView" class="hidden space-y-4"></div>
       </section>
     </div>
   </div>
@@ -174,10 +193,8 @@
   </dialog>
 
   <script>
-    // ==============================
-    // Gemini API Key (client-side demo only)
-    // ==============================
-    const GEMINI_API_KEY = 'AIzaSyC1okii4DAvBSNq6ua4v3Rg3SQxLdr5fas';
+    
+    const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY_HERE';
 
     // ==============================
     // App State
@@ -189,6 +206,7 @@
     let banned = new Set();
     let replacements = {}; // { from: to }
     let correctionNotes = {}; // { recipeName: [notes] }
+    let savedRecipes = []; // Array of saved recipe objects
 
     // ==============================
     // Handle custom dietary preference
@@ -217,6 +235,248 @@
     }
 
     // ==============================
+    // Saved Recipes Management
+    // ==============================
+    function toggleSaveRecipe(recipe) {
+      const index = savedRecipes.findIndex(r => r.name === recipe.name);
+      
+      if (index >= 0) {
+        // Recipe is already saved, remove it
+        savedRecipes.splice(index, 1);
+        addToLog(`Removed from saved: ${recipe.name}`);
+      } else {
+        // Save the recipe
+        savedRecipes.push(recipe);
+        addToLog(`Saved recipe: ${recipe.name}`);
+      }
+      
+      savePreferences();
+      renderSavedRecipesPreview();
+      
+      // Re-render current view to update bookmark icons
+      if (!el('recipesList').classList.contains('hidden')) {
+        renderRecipesList();
+      } else if (!el('savedRecipesView').classList.contains('hidden')) {
+        renderSavedRecipesView();
+      }
+    }
+
+    function isRecipeSaved(recipeName) {
+      return savedRecipes.some(r => r.name === recipeName);
+    }
+
+    function renderSavedRecipesPreview() {
+      const preview = el('savedRecipesPreview');
+      const count = el('savedCount');
+      
+      count.textContent = savedRecipes.length;
+      
+      if (savedRecipes.length === 0) {
+        preview.innerHTML = '<p class="text-sm text-gray-500 italic">No saved recipes yet</p>';
+        return;
+      }
+      
+      preview.innerHTML = savedRecipes.slice(0, 5).map(recipe => `
+        <div class="text-sm p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer" onclick="viewSavedRecipe('${recipe.name.replace(/'/g, "\\'")}')">
+          <div class="font-medium text-gray-800">${recipe.name}</div>
+          <div class="text-xs text-gray-500">${recipe.cookingTime || '-'} • ${recipe.difficulty || 'Easy'}</div>
+        </div>
+      `).join('') + (savedRecipes.length > 5 ? '<p class="text-xs text-gray-500 text-center mt-2">+ more...</p>' : '');
+    }
+
+    function toggleSavedRecipesView() {
+      const savedView = el('savedRecipesView');
+      const recipesList = el('recipesList');
+      const recipeDetail = el('recipeDetail');
+      const emptyState = el('emptyState');
+      const btn = el('viewSavedBtn');
+      
+      if (savedView.classList.contains('hidden')) {
+        // Show saved recipes view
+        savedView.classList.remove('hidden');
+        recipesList.classList.add('hidden');
+        recipeDetail.classList.add('hidden');
+        emptyState.classList.add('hidden');
+        btn.textContent = 'Back';
+        renderSavedRecipesView();
+      } else {
+        // Hide saved recipes view
+        savedView.classList.add('hidden');
+        btn.textContent = 'View All';
+        
+        // Show appropriate view
+        if (recipes.length > 0) {
+          renderRecipesList();
+        } else {
+          emptyState.classList.remove('hidden');
+        }
+      }
+    }
+
+    function renderSavedRecipesView() {
+      const view = el('savedRecipesView');
+      
+      if (savedRecipes.length === 0) {
+        view.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-lg p-12 text-center">
+            <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+            </svg>
+            <p class="text-gray-500 text-lg">No saved recipes yet</p>
+            <p class="text-gray-400 text-sm mt-2">Bookmark recipes to save them for later</p>
+          </div>
+        `;
+        return;
+      }
+      
+      view.innerHTML = `
+        <h2 class="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+          </svg>
+          My Saved Recipes (${savedRecipes.length})
+        </h2>
+        ${savedRecipes.map((recipe, index) => savedRecipeCard(recipe, index)).join('')}
+      `;
+    }
+
+    function savedRecipeCard(recipe, index) {
+      return `
+        <div class="recipe-card bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <h3 class="text-xl font-semibold text-gray-800 mb-1">${recipe.name}</h3>
+              ${recipe.reason ? `<p class="text-sm text-gray-600 mb-2">${recipe.reason}</p>` : ''}
+              <div class="flex flex-wrap gap-4 text-sm text-gray-600 mb-2">
+                <span class="flex items-center gap-1">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  ${recipe.cookingTime || '-'}
+                </span>
+                <span class="flex items-center gap-1">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                  </svg>
+                  ${recipe.servings || '-'}
+                </span>
+                <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded">${recipe.difficulty || 'Easy'}</span>
+              </div>
+            </div>
+            <div class="flex flex-col gap-2">
+              <button 
+                class="px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
+                onclick="removeSavedRecipe(${index})"
+                title="Remove from saved"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+          <div class="mt-4 flex justify-start">
+            <button class="text-blue-500 text-sm hover:text-blue-600" onclick="viewSavedRecipeDetail(${index})">
+              View Recipe →
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function removeSavedRecipe(index) {
+      if (confirm(`Remove "${savedRecipes[index].name}" from saved recipes?`)) {
+        const recipeName = savedRecipes[index].name;
+        savedRecipes.splice(index, 1);
+        savePreferences();
+        renderSavedRecipesPreview();
+        renderSavedRecipesView();
+        addToLog(`Removed from saved: ${recipeName}`);
+      }
+    }
+
+    function viewSavedRecipe(recipeName) {
+      const recipe = savedRecipes.find(r => r.name === recipeName);
+      if (recipe) {
+        const index = savedRecipes.indexOf(recipe);
+        viewSavedRecipeDetail(index);
+      }
+    }
+
+    function viewSavedRecipeDetail(index) {
+      const recipe = savedRecipes[index];
+      const savedView = el('savedRecipesView');
+      savedView.classList.add('hidden');
+      
+      const detailView = el('recipeDetail');
+      detailView.classList.remove('hidden');
+      
+      const notes = (correctionNotes[recipe.name] || []).slice(0, 5);
+      detailView.innerHTML = `
+        <button onclick="backToSavedList()" class="text-blue-500 hover:text-blue-600 mb-4 flex items-center gap-1">
+          ← Back to saved recipes
+        </button>
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="text-3xl font-bold text-gray-800">${recipe.name}</h2>
+          <div class="flex gap-2">
+            <button 
+              class="px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
+              onclick="removeSavedRecipeFromDetail(${index})"
+              title="Remove from saved"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-4 text-gray-600 mb-6 mt-2">
+          <span class="flex items-center gap-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            ${recipe.cookingTime || '-'}
+          </span>
+          <span class="flex items-center gap-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+            </svg>
+            ${recipe.servings || '-'}
+          </span>
+          <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full">${recipe.difficulty || 'Easy'}</span>
+        </div>
+        <div class="mb-6">
+          <h3 class="text-xl font-semibold mb-3">Required Ingredients</h3>
+          <div class="grid grid-cols-2 gap-2">
+            ${(recipe.matchedIngredients || []).map(ing => `<div class='flex items-center gap-2'><span class='text-green-500'>✓</span><span>${ing}</span></div>`).join('')}
+            ${(recipe.missingIngredients || []).map(ing => `<div class='flex items-center gap-2'><span class='text-pink-500'>+</span><span class='text-gray-600'>${ing}</span></div>`).join('')}
+          </div>
+        </div>
+        <div class="mb-6">
+          <h3 class="text-xl font-semibold mb-3">Cooking Steps</h3>
+          <ol class="space-y-3">
+            ${(recipe.steps || []).map((s, i) => `<li class='flex gap-3'><span class='flex-shrink-0 w-6 h-6 bg-pink-400 text-white rounded-full flex items-center justify-center text-sm'>${i + 1}</span><span class='text-gray-700'>${s}</span></li>`).join('')}
+          </ol>
+        </div>
+        ${recipe.tips ? `<div class='bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded'><h3 class='text-lg font-semibold mb-2 text-yellow-800'>Cooking Tips</h3><p class='text-gray-700'>${recipe.tips}</p></div>` : ''}
+        ${(recipe.appliedReplacements && recipe.appliedReplacements.length) ? `<p class='mt-4 text-sm text-gray-500'>Applied replacements: ${recipe.appliedReplacements.join(', ')}</p>` : ''}
+      `;
+    }
+
+    function removeSavedRecipeFromDetail(index) {
+      if (confirm(`Remove "${savedRecipes[index].name}" from saved recipes?`)) {
+        const recipeName = savedRecipes[index].name;
+        savedRecipes.splice(index, 1);
+        savePreferences();
+        renderSavedRecipesPreview();
+        addToLog(`Removed from saved: ${recipeName}`);
+        backToSavedList();
+      }
+    }
+
+    function backToSavedList() {
+      el('recipeDetail').classList.add('hidden');
+      el('savedRecipesView').classList.remove('hidden');
+      renderSavedRecipesView();
+    }
+
+    // ==============================
     // LocalStorage persistence
     // ==============================
     function savePreferences() {
@@ -224,6 +484,7 @@
       localStorage.setItem('recipeFinder_dislikes', JSON.stringify([...dislikes]));
       localStorage.setItem('recipeFinder_banned', JSON.stringify([...banned]));
       localStorage.setItem('recipeFinder_replacements', JSON.stringify(replacements));
+      localStorage.setItem('recipeFinder_savedRecipes', JSON.stringify(savedRecipes));
     }
 
     function loadPreferences() {
@@ -232,14 +493,17 @@
         const savedDislikes = localStorage.getItem('recipeFinder_dislikes');
         const savedBanned = localStorage.getItem('recipeFinder_banned');
         const savedReplacements = localStorage.getItem('recipeFinder_replacements');
+        const savedRecipesData = localStorage.getItem('recipeFinder_savedRecipes');
         
         if (savedLikes) likes = new Set(JSON.parse(savedLikes));
         if (savedDislikes) dislikes = new Set(JSON.parse(savedDislikes));
         if (savedBanned) banned = new Set(JSON.parse(savedBanned));
         if (savedReplacements) replacements = JSON.parse(savedReplacements);
+        if (savedRecipesData) savedRecipes = JSON.parse(savedRecipesData);
         
         renderBanned();
         renderReplacements();
+        renderSavedRecipesPreview();
       } catch (e) {
         console.error('Failed to load preferences:', e);
       }
@@ -249,7 +513,7 @@
     window.addEventListener('DOMContentLoaded', loadPreferences);
 
     function clearAllPreferences() {
-      if (!confirm('Are you sure you want to clear all saved preferences? This will delete:\n- Liked/disliked recipes\n- Banned ingredients\n- Replacement rules\n\nThis action cannot be undone.')) {
+      if (!confirm('Are you sure you want to clear all saved preferences? This will delete:\n- Liked/disliked recipes\n- Banned ingredients\n- Replacement rules\n- Saved recipes\n\nThis action cannot be undone.')) {
         return;
       }
       
@@ -258,16 +522,19 @@
       dislikes.clear();
       banned.clear();
       replacements = {};
+      savedRecipes = [];
       
       // Clear localStorage
       localStorage.removeItem('recipeFinder_likes');
       localStorage.removeItem('recipeFinder_dislikes');
       localStorage.removeItem('recipeFinder_banned');
       localStorage.removeItem('recipeFinder_replacements');
+      localStorage.removeItem('recipeFinder_savedRecipes');
       
       // Update UI
       renderBanned();
       renderReplacements();
+      renderSavedRecipesPreview();
       renderRecipesList();
       
       addToLog('All preferences cleared');
@@ -281,12 +548,16 @@
       const replacementsList = Object.keys(replacements).length > 0 
         ? Object.entries(replacements).map(([f, t]) => `${f}→${t}`).join(', ') 
         : 'None';
+      const savedList = savedRecipes.length > 0 
+        ? savedRecipes.map(r => r.name).join(', ') 
+        : 'None';
       
       const message = `📊 Your Saved Preferences:\n\n` +
         `👍 Liked Recipes (${likes.size}):\n${likedList}\n\n` +
         `👎 Disliked Recipes (${dislikes.size}):\n${dislikedList}\n\n` +
         `🚫 Banned Ingredients (${banned.size}):\n${bannedList}\n\n` +
-        `🔄 Replacement Rules (${Object.keys(replacements).length}):\n${replacementsList}`;
+        `🔄 Replacement Rules (${Object.keys(replacements).length}):\n${replacementsList}\n\n` +
+        `📖 Saved Recipes (${savedRecipes.length}):\n${savedList}`;
       
       alert(message);
     }
@@ -403,7 +674,7 @@
       const replList = Object.entries(replacements).map(([f, t]) => `${f}→${t}`);
 
       let prompt = `The human will actively control outputs. You are a strict JSON generator.
-Use the given ingredients and constraints to propose 2–5 recipe options. If a banned ingredient is essential, propose an alternative that respects replacements.
+Use the given ingredients and constraints to propose 3–5 recipe options. If a banned ingredient is essential, propose an alternative that respects replacements.
 
 INPUTS
 - Ingredients I have: ${ingredients.join(', ') || '(none)'}
@@ -550,6 +821,7 @@ RULES
     function renderRecipesList() {
       el('emptyState').classList.add('hidden');
       el('recipeDetail').classList.add('hidden');
+      el('savedRecipesView').classList.add('hidden');
       const box = el('recipesList');
       box.classList.remove('hidden');
 
@@ -572,6 +844,8 @@ RULES
     function recipeCard(recipe, index) {
       const liked = likes.has(recipe.name);
       const disliked = dislikes.has(recipe.name);
+      const saved = isRecipeSaved(recipe.name);
+      
       return `
       <div class="recipe-card bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl">
         <div class="flex items-start justify-between gap-4">
@@ -603,6 +877,13 @@ RULES
             <div class="flex gap-2">
               <button class="px-3 py-1 rounded-full border ${liked?'bg-blue-500 text-white':'hover:bg-blue-50'}" onclick="toggleLike('${recipe.name.replace(/'/g,"\\'")}')">👍</button>
               <button class="px-3 py-1 rounded-full border ${disliked?'bg-pink-500 text-white':'hover:bg-pink-50'}" onclick="toggleDislike('${recipe.name.replace(/'/g,"\\'")}')">👎</button>
+              <button 
+                class="px-3 py-1 rounded-full border ${saved?'bg-yellow-500 text-white':'hover:bg-yellow-50'}" 
+                onclick='toggleSaveRecipe(${JSON.stringify(recipe).replace(/'/g, "&#39;")})'
+                title="${saved ? 'Remove from saved' : 'Save recipe'}"
+              >
+                ${saved ? '★' : '☆'}
+              </button>
             </div>
           </div>
         </div>
@@ -634,6 +915,8 @@ RULES
       c.classList.remove('hidden');
 
       const notes = (correctionNotes[name]||[]).slice(0,5);
+      const saved = isRecipeSaved(recipe.name);
+      
       c.innerHTML = `
         <button onclick="backToList()" class="text-blue-500 hover:text-blue-600 mb-4 flex items-center gap-1">← Back to list</button>
         <div class="flex items-start justify-between gap-4">
@@ -641,6 +924,13 @@ RULES
           <div class="flex gap-2">
             <button class="px-3 py-1 rounded-full border ${likes.has(name)?'bg-blue-500 text-white':'hover:bg-blue-50'}" onclick="toggleLike('${name.replace(/'/g,"\\'")}')">👍</button>
             <button class="px-3 py-1 rounded-full border ${dislikes.has(name)?'bg-pink-500 text-white':'hover:bg-pink-50'}" onclick="toggleDislike('${name.replace(/'/g,"\\'")}')">👎</button>
+            <button 
+              class="px-3 py-1 rounded-full border ${saved?'bg-yellow-500 text-white':'hover:bg-yellow-50'}" 
+              onclick='toggleSaveRecipe(${JSON.stringify(recipe).replace(/'/g, "&#39;")})'
+              title="${saved ? 'Remove from saved' : 'Save recipe'}"
+            >
+              ${saved ? '★' : '☆'}
+            </button>
           </div>
         </div>
         <div class="flex flex-wrap gap-4 text-gray-600 mb-6 mt-2">
